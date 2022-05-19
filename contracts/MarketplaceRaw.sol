@@ -1,17 +1,22 @@
-// SPDX-License-Identifier: MIT
+/*  SPDX-License-Identifier: MIT
 pragma solidity ^0.8.4;
 
-import "github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/Counters.sol";
-import "github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC721/ERC721.sol";
-import "github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+import '@openzeppelin/contracts/utils/math/SafeMath.sol';
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+import "hardhat/console.sol";
 
 contract marketPlaceBoilerPlate is ReentrancyGuard {
+    using SafeMath for uint256;
     using Counters for Counters.Counter;
     Counters.Counter private _itemIds;
     Counters.Counter private _itemsSold;
     
      address public owner;
-     
+     address public ADMIN_WALLLET = 0x69Ba7E86bbB074Cd5f72693DEb6ADc508D83A6bF;
+
      constructor() {
          owner = msg.sender;
      }
@@ -43,18 +48,16 @@ contract marketPlaceBoilerPlate is ReentrancyGuard {
          address owner
          );
      
-    
-    
     function createMarketItem(
         address nftContract,
         uint256 tokenId,
         uint256 price
         ) public payable nonReentrant {
             require(price > 0, "Price must be greater than 0");
-            
+
             _itemIds.increment();
             uint256 itemId = _itemIds.current();
-  
+            console.log("counter", itemId);
             idToMarketItem[itemId] =  MarketItem(
                 itemId,
                 nftContract,
@@ -64,7 +67,7 @@ contract marketPlaceBoilerPlate is ReentrancyGuard {
                 price,
                 false
             );
-            
+
             IERC721(nftContract).transferFrom(msg.sender, address(this), tokenId);
                 
             emit MarketItemCreated(
@@ -85,20 +88,40 @@ contract marketPlaceBoilerPlate is ReentrancyGuard {
             uint price = idToMarketItem[itemId].price;
             uint tokenId = idToMarketItem[itemId].tokenId;
             bool sold = idToMarketItem[itemId].sold;
-            require(msg.value == price, "Please submit the asking price in order to complete the purchase");
-            require(sold != true, "This Sale has alredy finnished");
+
+            require(price == msg.value, "Please submit the asking price in order to complete the purchase");
+            require(sold != true, "This Sale has already finished");
             emit MarketItemSold(
                 itemId,
                 msg.sender
                 );
 
-            idToMarketItem[itemId].seller.transfer(msg.value);
+            uint amount = msg.value;
+            uint fee    = amount.mul(400).div(10000);
+
+            payable(ADMIN_WALLLET).transfer(fee);
+            idToMarketItem[itemId].seller.transfer(amount.sub(fee));
+
             IERC721(nftContract).transferFrom(address(this), msg.sender, tokenId);
             idToMarketItem[itemId].owner = payable(msg.sender);
             _itemsSold.increment();
             idToMarketItem[itemId].sold = true;
         }
-        
+
+    function removeMarketItem(uint256 itemId) external nonReentrant {
+        bool sold           = idToMarketItem[itemId].sold;
+        address nftContract = idToMarketItem[itemId].nftContract;
+        uint256 tokenId     = idToMarketItem[itemId].tokenId;
+        address seller      = idToMarketItem[itemId].seller;
+
+        require(msg.sender == seller, "Only the seller can remove his listed NFT");
+        require(sold != true, "Cannot remove NFT, This Sale has already finished");
+
+        IERC721(nftContract).transferFrom(address(this), msg.sender, tokenId);
+        delete idToMarketItem[itemId];
+        _itemIds.decrement();
+    }
+
     function fetchMarketItems() public view returns (MarketItem[] memory) {
         uint itemCount = _itemIds.current();
         uint unsoldItemCount = _itemIds.current() - _itemsSold.current();
@@ -115,7 +138,6 @@ contract marketPlaceBoilerPlate is ReentrancyGuard {
         }
         return items;
     }
-      
 }
 
-/// Thanks for inspiration: https://github.com/dabit3/polygon-ethereum-nextjs-marketplace/
+/// Thanks for inspiration: https://github.com/dabit3/polygon-ethereum-nextjs-marketplace/ */
